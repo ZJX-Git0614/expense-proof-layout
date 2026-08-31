@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f7ff" />
+    <title>报销凭证拼版</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">▤</div>
+          <div>
+            <div class="brand-name">报销凭证拼版</div>
+            <div class="brand-mode"><span class="status-dot"></span>编辑模式</div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div class="page-count" aria-live="polite">
+            <strong id="pageCount">0</strong><span>页</span>
+          </div>
+          <button class="btn btn-primary" id="mergeBtn" type="button">⚙️ 合并 PDF</button>
+          <button class="icon-button" id="helpBtn" type="button" title="使用帮助" aria-label="❓ 帮助">?</button>
+        </div>
+      </header>
+
+      <main class="workspace" id="editorView">
+        <aside class="sidebar" aria-label="文件控制面板">
+          <section class="panel-section upload-section">
+            <div class="section-kicker">STEP 01</div>
+            <h1>收集凭证</h1>
+            <p class="section-subtitle">上传后可以拖动卡片调整顺序</p>
+            <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="上传凭证文件">
+              <input id="fileInput" type="file" accept="application/pdf,image/jpeg,image/png" multiple hidden />
+              <div class="upload-glyph" aria-hidden="true">↑</div>
+              <div class="dropzone-title">拖拽文件到此处</div>
+              <div class="dropzone-subtitle">或点击选择 · 支持 PDF / JPG / PNG</div>
+            </div>
+          </section>
+
+          <section class="panel-section automation-section">
+            <div class="section-kicker">SMART TOOLS</div>
+            <div class="toggle-row">
+              <div class="toggle-icon blue">⌕</div>
+              <div class="toggle-copy">
+                <strong>图片 OCR 自动识别</strong>
+                <span>自动标记住宿、打车、招待等类型</span>
+              </div>
+              <label class="switch" aria-label="开启图片 OCR 自动识别">
+                <input id="ocrToggle" type="checkbox" checked />
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-icon orange">≡</div>
+              <div class="toggle-copy">
+                <strong>汇总信息页</strong>
+                <span>排版前提取交通、住宿、补助信息</span>
+              </div>
+              <label class="switch" aria-label="开启汇总信息页">
+                <input id="summaryToggle" type="checkbox" checked />
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div class="hint-banner">自动识别结果仅供参考，生成前请人工核对。</div>
+          </section>
+
+          <section class="panel-section file-section">
+            <div class="section-heading">
+              <div>
+                <div class="section-kicker">STEP 02</div>
+                <h2>文件列表 <span id="fileCount">0 个文件</span></h2>
+              </div>
+              <button class="text-button" id="clearBtn" type="button">清空</button>
+            </div>
+            <div class="file-actions">
+              <label class="checkbox-label"><input id="selectAll" type="checkbox" /><span>全选</span></label>
+              <button class="delete-button" id="deleteSelectedBtn" type="button" disabled>🗑 删除选中</button>
+            </div>
+            <div id="fileList" class="file-list" aria-live="polite"></div>
+          </section>
+
+          <div class="sidebar-footer">
+            <button class="feedback-link" id="feedbackBtn" type="button">📨 问题反馈</button>
+            <div>报销凭证拼版 <span>v3.0.1</span></div>
+            <div>© 2026 jiaxin · 本地处理更安心</div>
+          </div>
+        </aside>
+
+        <section class="preview-area" aria-label="页面预览">
+          <div class="preview-header">
+            <div>
+              <div class="section-kicker">STEP 03</div>
+              <h2>页面预览</h2>
+              <p>拖拽卡片调整顺序，每个页面可单独裁剪尺寸</p>
+            </div>
+            <div class="preview-note"><span class="note-dot"></span>仅在本地浏览器处理</div>
+          </div>
+          <div class="layout-toolbar">
+            <span class="toolbar-label">排版：</span>
+            <div class="layout-tabs" role="tablist" aria-label="选择排版模式">
+              <button class="layout-tab" data-layout="A5" type="button" role="tab">A5 顺序</button>
+              <button class="layout-tab active" data-layout="A4" type="button" role="tab" aria-selected="true">A4 排版</button>
+              <button class="layout-tab" data-layout="OA" type="button" role="tab">OA 上传版</button>
+            </div>
+          </div>
+          <div class="preview-board" id="previewBoard"></div>
+          <div class="preview-footer">
+            <span>💡 建议先按时间顺序排列，再选择合适的排版方式</span>
+            <span id="layoutDescription">A4 每页排列 2 张凭证</span>
+          </div>
+        </section>
+      </main>
+
+      <section class="result-view" id="resultView" hidden>
+        <div class="result-hero">
+          <div>
+            <div class="section-kicker">READY TO EXPORT</div>
+            <h1>拼版完成，材料可以提交了</h1>
+            <p>已根据当前顺序与 <strong id="resultLayout">A4 排版</strong>生成本地预览。</p>
+          </div>
+          <div class="result-actions">
+            <button class="btn btn-secondary" id="editSummaryBtn" type="button">📋 编辑汇总</button>
+            <button class="btn btn-secondary" id="backToEditBtn" type="button">✏️ 返回编辑</button>
+            <button class="btn btn-secondary" id="printBtn" type="button">🖨️ 打印</button>
+            <button class="btn btn-light" id="printHelpBtn" type="button">📋 打印说明</button>
+            <button class="btn btn-success" id="downloadBtn" type="button">⬇️ 下载</button>
+          </div>
+        </div>
+        <div class="result-summary-grid">
+          <div class="result-stat-card"><span>文件总数</span><strong id="resultFileCount">0</strong><small>份凭证文件</small></div>
+          <div class="result-stat-card"><span>页面总数</span><strong id="resultPageCount">0</strong><small>张预览页面</small></div>
+          <div class="result-stat-card accent"><span>当前排版</span><strong id="resultLayoutShort">A4</strong><small id="resultLayoutHint">适合打印归档</small></div>
+        </div>
+        <div class="result-preview-card">
+          <div class="result-preview-header"><div><strong>合并结果预览</strong><span>共 <b id="resultPreviewCount">0</b> 个页面</span></div><span class="success-pill">✓ 已完成</span></div>
+          <div id="resultPreview" class="result-preview"></div>
+        </div>
+      </section>
+
+      <div class="modal-root" id="modalRoot" hidden></div>
+      <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
