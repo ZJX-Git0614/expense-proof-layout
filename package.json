@@ -1,0 +1,11 @@
+{
+  "name": "expense-proof-layout",
+  "version": "1.0.0",
+  "private": true,
+  "description": "本地报销凭证拼版工作台",
+  "scripts": {
+    "dev": "python3 server.py",
+    "start": "python3 server.py",
+    "check": "node --check app.js && python3 -c \"import ast; ast.parse(open('server.py', encoding='utf-8').read())\""
+  }
+}
