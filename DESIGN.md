@@ -13,7 +13,7 @@
 
 ## Product goals
 - Goals: 让用户快速上传凭证，调整顺序与版式，预览并导出适合报销流程的整理结果
-- Non-goals: 本地版本不接入真实 OCR 服务、远程公司打印机或云端文件存储；PDF 预览仅处理首页
+- Non-goals: 本地版本不接入真实 OCR 服务、远程公司打印机或云端文件存储；编辑区 PDF 预览仅处理首页，最终导出会处理源文件全部页面
 - Success signals: 上传后能看到可辨识的文件卡片；拖拽、选择、删除、切换版式、汇总编辑、裁剪和导出/打印路径均可完成
 
 ## Personas and jobs
@@ -30,7 +30,7 @@
 - Principle 1: 先让状态可见：数量、选中、处理中、成功与空状态都要有明确反馈
 - Principle 2: 一次只突出一个下一步：上传、整理、合并、下载分别保持清晰的主按钮层级
 - Principle 3: 自动化必须可核对：OCR 与汇总提取都用“参考/待核对”语气，并保留编辑入口
-- Tradeoffs: 优先还原工具的效率与功能密度；本地实现以浏览器能力模拟导出，不引入后端依赖
+- Tradeoffs: 优先还原工具的效率与功能密度；本地实现用轻量 `server.py` 处理 PDF 光栅化与最终拼版，不引入云端依赖
 
 ## Visual language
 - Color: 温和的蓝紫主色（#5b6ee1）、青绿色成功色、暖橙提示色、浅灰蓝页面底色
@@ -74,10 +74,10 @@
 ## Implementation constraints
 - Framework/styling system: 无框架依赖的 HTML/CSS/JavaScript 单页；使用 `server.py` 提供静态页面与本地 PDF 预览接口
 - Design-token constraints: 颜色、阴影、圆角和间距集中在 `styles.css` 顶部变量
-- Performance constraints: 不上传文件到网络；图片使用对象 URL；PDF 只生成首页 PNG；避免大体积第三方库
+- Performance constraints: 不上传文件到网络；图片使用对象 URL；编辑区只生成首页 PNG，最终 PDF 按需生成；避免大体积第三方库
 - Compatibility constraints: 现代桌面/移动浏览器；文件输入、拖放、打印和下载使用标准 Web API
 - Test/screenshot expectations: 启动本地服务后验证空状态、上传、排序、删除、版式、汇总、合并结果与响应式布局
 
 ## Open questions
-- [ ] 真实 PDF 拼版与 OCR 服务的后端协议 / owner: 产品或后端 / impact: 当前本地版本以浏览器预览与模拟导出替代
+- [x] 真实 PDF 拼版与 OCR 服务的后端协议 / owner: 产品或后端 / impact: 本地版本已通过 `server.py` 提供 PDF 拼版，OCR 仍为前端模拟
 - [ ] 公司打印机远程接口与鉴权字段 / owner: 企业 IT / impact: 当前仅保留本地打印入口与演示表单

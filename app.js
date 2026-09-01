@@ -6,6 +6,9 @@ const state = {
   summary: true,
   result: false,
   processing: false,
+  mergedPdfUrl: '',
+  mergedPdfBlob: null,
+  mergedPdfPages: 0,
   summaryRows: [
     { type: '往返交通', amount: '', days: '', note: '' },
     { type: '住宿', amount: '', days: '', note: '' },
@@ -165,6 +168,44 @@ async function requestPdfPreview(source, item) {
   }
 }
 
+function layoutSheetCount() {
+  return state.layout === 'A4' ? Math.ceil(state.files.length / 2) : state.files.length;
+}
+
+function revokeMergedPdf() {
+  if (state.mergedPdfUrl) URL.revokeObjectURL(state.mergedPdfUrl);
+  state.mergedPdfUrl = '';
+  state.mergedPdfBlob = null;
+  state.mergedPdfPages = 0;
+}
+
+function mergeFormData() {
+  const formData = new FormData();
+  formData.append('layout', state.layout);
+  state.files.forEach((file) => formData.append('files', file.source, file.name));
+  return formData;
+}
+
+async function requestMergedPdf() {
+  const response = await fetch('/api/merge', { method: 'POST', body: mergeFormData() });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `merge ${response.status}`);
+  }
+  const blob = await response.blob();
+  if (blob.type && !blob.type.includes('pdf')) throw new Error('服务端没有返回 PDF');
+  revokeMergedPdf();
+  state.mergedPdfBlob = blob;
+  state.mergedPdfUrl = URL.createObjectURL(blob);
+  state.mergedPdfPages = Number(response.headers.get('X-PDF-Pages')) || layoutSheetCount();
+  return blob;
+}
+
+async function ensureMergedPdf() {
+  if (state.mergedPdfBlob && state.mergedPdfUrl) return state.mergedPdfBlob;
+  return requestMergedPdf();
+}
+
 function fileThumb(file, extraClass = '') {
   if (file.ext !== 'pdf' && file.previewUrl) return `<div class="file-thumb ${extraClass}" style="background-image:url('${file.previewUrl}')"></div>`;
   return `<div class="file-thumb pdf ${extraClass}">PDF</div>`;
@@ -233,8 +274,10 @@ function renderResult() {
   $('#resultLayoutHint').textContent = meta.hint;
   $('#resultFileCount').textContent = state.files.length;
   $('#resultPageCount').textContent = totalPages();
-  $('#resultPreviewCount').textContent = state.files.length;
-  $('#resultPreview').innerHTML = renderLayoutPreview(state.files, true);
+  $('#resultPreviewCount').textContent = state.mergedPdfPages || layoutSheetCount();
+  $('#resultPreview').innerHTML = state.mergedPdfUrl
+    ? `<iframe class="merged-pdf-frame" src="${escapeHtml(state.mergedPdfUrl)}" title="最终合并 PDF 预览"></iframe><p class="result-preview-note">这里显示的就是下载和打印使用的最终合并 PDF。</p>`
+    : renderLayoutPreview(state.files, true);
 }
 
 function render() {
@@ -303,16 +346,16 @@ function openModal(content, className = '') {
 }
 
 function openHelp() {
-  openModal(`<div class="modal-header"><div><h2>使用帮助</h2><p>按 3 步整理你的报销凭证，所有文件都只在当前浏览器处理。</p></div><button class="modal-close" data-close type="button" aria-label="关闭">×</button></div>
+  openModal(`<div class="modal-header"><div><h2>使用帮助</h2><p>按 3 步整理你的报销凭证，所有文件都只在本机处理。</p></div><button class="modal-close" data-close type="button" aria-label="关闭">×</button></div>
     <div class="help-layout"><nav class="help-nav" aria-label="帮助目录">
       <button class="active" data-help="upload" type="button">📤 上传文件</button><button data-help="type" type="button">🏷️ 设置文件类型</button><button data-help="card" type="button">🃏 卡片操作</button><button data-help="merge" type="button">⚙️ 合并与排版</button><button data-help="faq" type="button">❓ 常见问题</button>
     </nav><div class="help-copy" id="helpCopy"></div></div>`,'wide');
   const copy = {
     upload: { title: '上传文件', body: `<div class="help-step"><b>1</b><div><strong>选择或拖拽凭证</strong><p>支持 PDF、JPG、PNG，可以一次选择多份文件。文件会按照添加顺序出现在预览区。</p></div></div><div class="help-step"><b>2</b><div><strong>等待识别完成</strong><p>打开 OCR 后，图片会自动出现费用类型标签。识别结果仅供参考，请以原始票据为准。</p></div></div>` },
-    type: { title: '设置文件类型', body: `<p>图片 OCR 会尝试标记“差旅交通、住宿发票、餐饮招待、日常采购”等类型。PDF 文件保留为 PDF 文件，不会被上传到服务器。</p><ul><li>打开开关：新添加的图片进入“识别中”状态。</li><li>关闭开关：文件仅保留格式标签，适合不需要自动识别的材料。</li></ul>` },
+    type: { title: '设置文件类型', body: `<p>图片 OCR 会尝试标记“差旅交通、住宿发票、餐饮招待、日常采购”等类型。预览和 PDF 生成只会请求本机的 server.py，不会上传到互联网。</p><ul><li>打开开关：新添加的图片进入“识别中”状态。</li><li>关闭开关：文件仅保留格式标签，适合不需要自动识别的材料。</li></ul>` },
     card: { title: '卡片操作', body: `<p>在左侧文件列表中可以全选、删除或使用箭头微调顺序；在右侧预览卡片上可以拖拽排序，也可以为单个页面选择 A5/A4 比例裁剪。</p><p>手机或触控设备上推荐使用卡片右下方的裁剪入口与左侧的上移/下移按钮。</p>` },
-    merge: { title: '合并与排版', body: `<p>先选择一种排版模式，再点击右上角“合并 PDF”。A4 适合打印归档，A5 适合小册装订，OA 上传版会按单页纵向整理。</p><div class="notice-box">开启“汇总信息页”时，合并前会先打开汇总审核窗口。确认后才会进入结果预览。</div>` },
-    faq: { title: '常见问题', body: `<ul><li><strong>文件会上传到哪里？</strong><br />不会上传。当前版本使用浏览器本地对象 URL 预览。</li><li><strong>为什么 PDF 只有一张预览？</strong><br />演示版本未接入 PDF 解析，会以单张占位卡片展示；接入真实 PDF 服务后可展开真实页数。</li><li><strong>下载是什么格式？</strong><br />下载按钮生成可打印的本地整理文件；接入真实 PDF 服务时，可替换为后端生成的 PDF。</li></ul>` },
+    merge: { title: '合并与排版', body: `<p>先选择一种排版模式，再点击右上角“合并 PDF”。A4 适合打印归档，A5 适合小册装订，OA 上传版会按单页纵向整理。</p><div class="notice-box">开启“汇总信息页”时，合并前会先打开汇总审核窗口；确认后会生成最终 PDF。</div>` },
+    faq: { title: '常见问题', body: `<ul><li><strong>文件会上传到哪里？</strong><br />不会上传到互联网；预览和最终 PDF 生成都由本机 server.py 处理。</li><li><strong>为什么编辑区只显示一张预览？</strong><br />编辑区显示源文件首页缩略图；合并导出会处理每个源 PDF 的全部页面。</li><li><strong>下载是什么格式？</strong><br />下载按钮生成按当前排版完成的 PDF，打印按钮打开同一份最终 PDF 预览。</li></ul>` },
   };
   const setHelp = (key) => {
     const data = copy[key];
@@ -326,7 +369,7 @@ function openHelp() {
 function openSummary() {
   const rows = state.summaryRows.map((row, index) => `<tr data-row="${index}"><td><input data-summary="type" value="${escapeHtml(row.type)}" aria-label="费用类型" /></td><td><input data-summary="amount" inputmode="decimal" placeholder="元" value="${escapeHtml(row.amount)}" aria-label="金额" /></td><td><input data-summary="days" placeholder="天" value="${escapeHtml(row.days)}" aria-label="天数" /></td><td><input data-summary="note" placeholder="备注" value="${escapeHtml(row.note)}" aria-label="备注" /></td><td><button class="sum-remove" data-remove-row type="button" aria-label="删除此行">×</button></td></tr>`).join('');
   openModal(`<div class="modal-header"><div><h2>编辑汇总信息</h2><p>自动提取的信息仅供参考，请核对金额与天数后再生成。</p></div><button class="modal-close" data-close type="button" aria-label="关闭">×</button></div>
-    <div class="modal-body"><div class="notice-box">汇总页会作为首张页面加入本次拼版；OA 上传版不生成汇总页。</div><table class="summary-table"><thead><tr><th>费用类型</th><th>金额</th><th>天数</th><th>备注</th><th></th></tr></thead><tbody id="summaryRows">${rows}</tbody></table><button class="sum-add" id="addSummaryRow" type="button">+ 添加一行</button></div>
+    <div class="modal-body"><div class="notice-box">汇总信息用于生成前审核；确认后将按当前排版生成最终 PDF。OA 上传版不生成汇总信息页。</div><table class="summary-table"><thead><tr><th>费用类型</th><th>金额</th><th>天数</th><th>备注</th><th></th></tr></thead><tbody id="summaryRows">${rows}</tbody></table><button class="sum-add" id="addSummaryRow" type="button">+ 添加一行</button></div>
     <div class="modal-footer"><button class="btn btn-secondary" data-close type="button">取消</button><button class="btn btn-primary" id="confirmSummary" type="button">✓ 确认生成</button></div>`);
   const syncRows = () => {
     state.summaryRows = [...modalRoot.querySelectorAll('#summaryRows tr')].map((tr) => ({
@@ -371,18 +414,41 @@ function openFeedback() {
 }
 
 function openPrintHelp() {
-  openModal(`<div class="modal-header"><div><h2>打印说明</h2><p>A4 打印后裁剪/叠放流程</p></div><button class="modal-close" data-close type="button" aria-label="关闭">×</button></div><div class="modal-body"><div class="print-timeline"><div class="timeline-item"><b>1</b><span>选择打印机</span></div><div class="timeline-item"><b>2</b><span>按实际大小打印</span></div><div class="timeline-item"><b>3</b><span>裁剪并叠放</span></div><div class="timeline-item"><b>4</b><span>装订提交</span></div></div><div class="notice-box" style="margin-top:24px">打印前请确认浏览器打印设置为“实际大小”，关闭“适合页面”缩放，避免凭证比例发生变化。</div></div>`);
+  openModal(`<div class="modal-header"><div><h2>打印说明</h2><p>打印最终合并 PDF</p></div><button class="modal-close" data-close type="button" aria-label="关闭">×</button></div><div class="modal-body"><div class="print-timeline"><div class="timeline-item"><b>1</b><span>打开最终 PDF</span></div><div class="timeline-item"><b>2</b><span>检查合并预览</span></div><div class="timeline-item"><b>3</b><span>按实际大小打印</span></div><div class="timeline-item"><b>4</b><span>裁剪并叠放</span></div></div><div class="notice-box" style="margin-top:24px">打印按钮会打开与下载完全相同的最终合并 PDF。打印前请确认设置为“实际大小”，关闭“适合页面”缩放，避免凭证比例发生变化。</div></div>`);
+}
+
+async function openFinalPdfPrintPreview() {
+  const embeddedPdf = $('#resultPreview iframe');
+  if (state.mergedPdfUrl && embeddedPdf?.contentWindow) {
+    embeddedPdf.contentWindow.focus();
+    embeddedPdf.contentWindow.print();
+    showToast('已调用最终合并 PDF 的打印预览', 'success');
+    return;
+  }
+  const printWindow = window.open(state.mergedPdfUrl || '', '_blank');
+  if (!printWindow) {
+    showToast('浏览器阻止了新窗口，请允许弹窗后重试', 'warning');
+    return;
+  }
+  try {
+    await ensureMergedPdf();
+    if (!printWindow.closed) printWindow.location.href = state.mergedPdfUrl;
+    showToast('已打开最终合并 PDF，请在 PDF 预览中点击打印', 'success');
+  } catch (error) {
+    if (!printWindow.closed) printWindow.close();
+    showToast(`生成 PDF 失败：${error.message}`, 'warning');
+  }
 }
 
 function openPrintModal() {
-  openModal(`<div class="modal-header"><div><h2>选择打印方式</h2><p>请选择当前材料的打印出口。</p></div><button class="modal-close" data-close type="button" aria-label="关闭">×</button></div><div class="modal-body"><div class="print-options"><div class="print-option"><input id="localPrint" name="printType" type="radio" value="local" checked /><label for="localPrint"><strong>🖨️ 本地打印机</strong><span>通过浏览器打印（Ctrl + P）</span></label></div><div class="print-option"><input id="companyPrint" name="printType" type="radio" value="company" /><label for="companyPrint"><strong>🏢 公司打印机</strong><span>通过后台配置的远程接口打印（演示入口）</span></label></div></div></div><div class="modal-footer"><button class="btn btn-secondary" data-close type="button">取消</button><button class="btn btn-primary" id="confirmPrint" type="button">🖨️ 确认打印</button></div>`);
+  openModal(`<div class="modal-header"><div><h2>选择打印方式</h2><p>打印时将打开最终合并 PDF 预览。</p></div><button class="modal-close" data-close type="button" aria-label="关闭">×</button></div><div class="modal-body"><div class="print-options"><div class="print-option"><input id="localPrint" name="printType" type="radio" value="local" checked /><label for="localPrint"><strong>🖨️ 本地打印机</strong><span>打开最终 PDF 后打印</span></label></div><div class="print-option"><input id="companyPrint" name="printType" type="radio" value="company" /><label for="companyPrint"><strong>🏢 公司打印机</strong><span>远程接口未配置，仍打开最终 PDF</span></label></div></div></div><div class="modal-footer"><button class="btn btn-secondary" data-close type="button">取消</button><button class="btn btn-primary" id="confirmPrint" type="button">🖨️ 打开 PDF 预览</button></div>`);
   modalRoot.querySelector('#confirmPrint').addEventListener('click', () => {
     const type = modalRoot.querySelector('input[name="printType"]:checked').value;
     closeModal();
     if (type === 'company') {
-      showToast('公司打印机接口尚未配置，已为你保留本地打印预览', 'warning');
+      showToast('公司打印机接口尚未配置，将打开最终 PDF 预览', 'warning');
     }
-    window.setTimeout(() => window.print(), 180);
+    openFinalPdfPrintPreview();
   });
 }
 
@@ -405,17 +471,23 @@ function openCropModal(id) {
   modalRoot.querySelector('#confirmCrop').addEventListener('click', () => { file.crop = ratio; closeModal(); showToast(`已将「${file.name}」设置为 ${ratio} 比例`, 'success'); });
 }
 
-function beginMerge() {
+async function beginMerge() {
   state.processing = true;
   render();
-  openModal(`<div class="processing-modal"><div class="processing-orbit"></div><h2>正在整理凭证</h2><p>正在按 ${layoutMeta[state.layout].label} 生成页面预览，请稍候…</p><div class="progress-track"></div></div>`);
-  window.setTimeout(() => {
+  openModal(`<div class="processing-modal"><div class="processing-orbit"></div><h2>正在整理凭证</h2><p>正在按 ${layoutMeta[state.layout].label} 生成最终 PDF，请稍候…</p><div class="progress-track"></div></div>`);
+  try {
+    await requestMergedPdf();
     state.processing = false;
     state.result = true;
     closeModal();
     render();
     showToast('拼版完成，可以下载或打印了', 'success');
-  }, 1200);
+  } catch (error) {
+    state.processing = false;
+    closeModal();
+    render();
+    showToast(`生成 PDF 失败：${error.message}`, 'warning');
+  }
 }
 
 function requestMerge() {
@@ -430,19 +502,19 @@ function requestMerge() {
   beginMerge();
 }
 
-function downloadResult() {
-  const meta = layoutMeta[state.layout];
-  const lines = state.files.map((file, index) => `${index + 1}. ${file.name}（${file.pages} 页）`).join('\n');
-  const html = `<!doctype html><meta charset="utf-8"><title>报销凭证拼版 - ${meta.label}</title><style>body{font:14px sans-serif;color:#202a49;padding:40px}h1{font-size:22px}li{padding:8px 0;border-bottom:1px solid #ddd}</style><h1>报销凭证拼版</h1><p>排版：${meta.label}　文件：${state.files.length} 个　页面：${totalPages()} 页</p><ol>${state.files.map((file) => `<li>${escapeHtml(file.name)} · ${file.pages} 页 · ${escapeHtml(file.category)}</li>`).join('')}</ol><p>本地导出时间：${new Date().toLocaleString('zh-CN')}</p>`;
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `报销凭证拼版-${new Date().toISOString().slice(0, 10)}.html`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-  showToast('已下载本地整理文件，可直接打印或继续加工', 'success');
+async function downloadResult() {
+  try {
+    await ensureMergedPdf();
+    const link = document.createElement('a');
+    link.href = state.mergedPdfUrl;
+    link.download = `报销凭证拼版-${state.layout}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    showToast('已下载排版后的 PDF', 'success');
+  } catch (error) {
+    showToast(`下载 PDF 失败：${error.message}`, 'warning');
+  }
 }
 
 dropzone.addEventListener('click', () => fileInput.click());

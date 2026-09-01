@@ -18,9 +18,9 @@ npm run dev
 - 图片 OCR 状态模拟与费用类型标签
 - 汇总信息编辑、行添加/删除和合并前审核
 - 单页裁剪比例设置、帮助、反馈、打印说明
-- 合并结果页、本地整理文件下载、浏览器打印
+- 合并结果页、最终合并 PDF 下载、最终 PDF 打印预览
 - 本地 PDF 首页光栅预览（由 `server.py` 调用 `pdftoppm`，失败时自动退回浏览器 PDF 预览）
 
 ## 接入后端时的替换点
 
-当前版本只把文件发送到本机的 `/api/preview` 进行 PDF 首页光栅化，不会上传到互联网；OCR 为前端状态模拟，下载生成可打印的 HTML 整理文件。接入真实服务时，可在 `app.js` 的 `requestPdfPreview`、`beginMerge` 和 `downloadResult` 位置替换为完整 PDF 解析、OCR 和服务端 PDF 导出逻辑。
+当前版本只把文件发送到本机的 `/api/preview` 与 `/api/merge`，不会上传到互联网。`/api/merge` 会把每个源 PDF 的全部页面按 A4/A5/OA 规则生成新的 PDF；下载和打印预览复用同一份 PDF。OCR 仍为前端状态模拟，图片文件在 macOS 上通过 `sips` 转为 PDF 后参与排版。
