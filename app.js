@@ -23,6 +23,7 @@ const fileList = $('#fileList');
 const previewBoard = $('#previewBoard');
 const modalRoot = $('#modalRoot');
 const toastRegion = $('#toastRegion');
+const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:4173' : '';
 
 const layoutMeta = {
   A5: { label: 'A5 顺序', short: 'A5', hint: '适合装订归档', description: '每张凭证独立落在一张 A5 页面', className: 'a5-stack' },
@@ -154,7 +155,7 @@ async function requestPdfPreview(source, item) {
   const formData = new FormData();
   formData.append('file', source, source.name);
   try {
-    const response = await fetch('/api/preview', { method: 'POST', body: formData });
+    const response = await fetch(`${API_BASE}/api/preview`, { method: 'POST', body: formData });
     if (!response.ok) throw new Error(`preview ${response.status}`);
     const payload = await response.json();
     const target = state.files.find((file) => file.id === item.id);
@@ -187,7 +188,7 @@ function mergeFormData() {
 }
 
 async function requestMergedPdf() {
-  const response = await fetch('/api/merge', { method: 'POST', body: mergeFormData() });
+  const response = await fetch(`${API_BASE}/api/merge`, { method: 'POST', body: mergeFormData() });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload.error || `merge ${response.status}`);

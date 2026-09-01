@@ -331,6 +331,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         encoded = json_bytes(payload)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
@@ -380,6 +381,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             filename = f"报销凭证拼版-{layout}.pdf"
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header(
                 "Content-Disposition",
                 f"attachment; filename=expense-layout.pdf; filename*=UTF-8''{quote(filename)}",
