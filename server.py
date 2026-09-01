@@ -161,15 +161,22 @@ def render_png_page(pdf_path: Path, page_number: int, temp_dir: Path, stem: str)
 
 def image_to_pdf(image_path: Path, output_path: Path) -> None:
     command = shutil.which("sips")
-    if not command:
-        raise RuntimeError("图片排版需要 macOS sips 或先转换为 PDF")
-    subprocess.run(
-        [command, "-s", "format", "pdf", str(image_path), "--out", str(output_path)],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        timeout=20,
-    )
+    if command:
+        subprocess.run(
+            [command, "-s", "format", "pdf", str(image_path), "--out", str(output_path)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=20,
+        )
+        return
+    try:
+        from PIL import Image
+    except ImportError as error:
+        raise RuntimeError("图片排版需要 macOS sips 或 Pillow") from error
+    with Image.open(image_path) as source:
+        image = source.convert("RGB")
+        image.save(output_path, "PDF", resolution=PAGE_DPI)
 
 
 def collect_source_pages(uploads: list[tuple[str, bytes]], temp_dir: Path) -> list[tuple[int, int, bytes]]:
@@ -326,6 +333,12 @@ def make_merged_pdf(uploads: list[tuple[str, bytes]], layout: str) -> tuple[byte
 class AppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def end_headers(self) -> None:
+        request_path = self.path.split("?", 1)[0]
+        if request_path in {"/", "/index.html", "/app.js", "/styles.css"}:
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
+        super().end_headers()
 
     def send_json(self, status: int, payload: dict) -> None:
         encoded = json_bytes(payload)

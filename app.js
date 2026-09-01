@@ -24,6 +24,119 @@ const previewBoard = $('#previewBoard');
 const modalRoot = $('#modalRoot');
 const toastRegion = $('#toastRegion');
 const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:4173' : '';
+const WORKSPACE_DB = 'expense-proof-layout-workspace-v1';
+const WORKSPACE_STORE = 'workspace';
+const FILE_STORE = 'files';
+let workspaceDbPromise = null;
+let persistTimer = 0;
+let persistenceReady = false;
+
+function openWorkspaceDb() {
+  if (workspaceDbPromise) return workspaceDbPromise;
+  workspaceDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(WORKSPACE_DB, 1);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(WORKSPACE_STORE)) database.createObjectStore(WORKSPACE_STORE);
+      if (!database.objectStoreNames.contains(FILE_STORE)) database.createObjectStore(FILE_STORE, { keyPath: 'id' });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return workspaceDbPromise;
+}
+
+function runIdbRequest(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function workspaceSnapshot() {
+  return {
+    layout: state.layout,
+    ocr: state.ocr,
+    summary: state.summary,
+    summaryRows: state.summaryRows,
+    selected: [...state.selected],
+  };
+}
+
+async function persistWorkspace() {
+  if (!persistenceReady) return;
+  const database = await openWorkspaceDb();
+  const transaction = database.transaction([WORKSPACE_STORE, FILE_STORE], 'readwrite');
+  const workspace = transaction.objectStore(WORKSPACE_STORE);
+  const files = transaction.objectStore(FILE_STORE);
+  workspace.put(workspaceSnapshot(), 'current');
+  files.clear();
+  state.files.forEach((file) => {
+    files.put({
+      id: file.id, name: file.name, ext: file.ext, size: file.size, pages: file.pages,
+      category: file.category, dimensions: file.dimensions, ocrStatus: file.ocrStatus,
+      crop: file.crop, sequence: file.sequence, blob: file.source,
+    });
+  });
+  await new Promise((resolve, reject) => {
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+function schedulePersist() {
+  if (!persistenceReady) return;
+  window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    persistWorkspace().catch((error) => console.warn('Unable to save workspace:', error));
+  }, 250);
+}
+
+async function clearPersistedWorkspace() {
+  const database = await openWorkspaceDb();
+  const transaction = database.transaction([WORKSPACE_STORE, FILE_STORE], 'readwrite');
+  transaction.objectStore(WORKSPACE_STORE).delete('current');
+  transaction.objectStore(FILE_STORE).clear();
+  await new Promise((resolve, reject) => {
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+async function restoreWorkspace() {
+  try {
+    const database = await openWorkspaceDb();
+    const transaction = database.transaction([WORKSPACE_STORE, FILE_STORE], 'readonly');
+    const workspace = await runIdbRequest(transaction.objectStore(WORKSPACE_STORE).get('current'));
+    const files = await runIdbRequest(transaction.objectStore(FILE_STORE).getAll());
+    if (workspace) {
+      state.layout = layoutMeta[workspace.layout] ? workspace.layout : state.layout;
+      state.ocr = Boolean(workspace.ocr);
+      state.summary = Boolean(workspace.summary);
+      state.summaryRows = Array.isArray(workspace.summaryRows) && workspace.summaryRows.length ? workspace.summaryRows : state.summaryRows;
+      state.selected = new Set(Array.isArray(workspace.selected) ? workspace.selected : []);
+      $('#ocrToggle').checked = state.ocr;
+      $('#summaryToggle').checked = state.summary;
+    }
+    state.files = files.sort((a, b) => a.sequence - b.sequence).map((file) => {
+      const source = new File([file.blob], file.name, { type: file.blob.type || (file.ext === 'pdf' ? 'application/pdf' : 'image/jpeg') });
+      const url = URL.createObjectURL(source);
+      return { ...file, source, url, previewUrl: file.ext === 'pdf' ? '' : url };
+    });
+    state.selected = new Set([...state.selected].filter((id) => state.files.some((file) => file.id === id)));
+    persistenceReady = true;
+    render();
+    state.files.filter((file) => file.ext === 'pdf').forEach((file) => requestPdfPreview(file.source, file));
+    if (state.files.length) showToast(`已恢复 ${state.files.length} 个本地缓存文件`, 'success');
+  } catch (error) {
+    persistenceReady = true;
+    console.warn('Unable to restore workspace:', error);
+    render();
+  }
+}
+
 
 const layoutMeta = {
   A5: { label: 'A5 顺序', short: 'A5', hint: '适合装订归档', description: '每张凭证独立落在一张 A5 页面', className: 'a5-stack' },
@@ -136,6 +249,7 @@ function addFiles(fileArray) {
   if (rejected) showToast(`${rejected} 个文件格式不支持，请选择 PDF / JPG / PNG`, 'warning');
   if (!accepted.length) return;
   render();
+  schedulePersist();
   showToast(`已添加 ${accepted.length} 个文件`, 'success');
   accepted.forEach((file, index) => {
     if (file.ocrStatus !== 'working') return;
@@ -146,6 +260,7 @@ function addFiles(fileArray) {
       target.category = ['打车发票', '住宿普票', '招待普票', '其他费用'][index % 4];
       target.dimensions = inferDocumentMeta(target.name).dimensions;
       sortFilesByType();
+      refreshSummaryRows();
       render();
     }, 850 + index * 260);
   });
@@ -308,6 +423,8 @@ function moveFile(id, direction) {
   const next = index + direction;
   if (index < 0 || next < 0 || next >= state.files.length) return;
   [state.files[index], state.files[next]] = [state.files[next], state.files[index]];
+  state.files.forEach((file, sequence) => { file.sequence = sequence; });
+  schedulePersist();
   render();
 }
 
@@ -367,7 +484,38 @@ function openHelp() {
   modalRoot.querySelectorAll('[data-help]').forEach((button) => button.addEventListener('click', () => setHelp(button.dataset.help)));
 }
 
+function inferSummaryRows() {
+  const groups = [
+    { type: '往返交通', match: /机票|火车|高铁|行程单|交通/, days: false },
+    { type: '住宿', match: /住宿/, days: true },
+    { type: '市内交通', match: /打车|出租|网约车|滴滴|交通/, days: false },
+  ];
+  return groups.map((group) => {
+    const matched = state.files.filter((file) => group.match.test(`${file.category} ${file.name}`));
+    const amounts = matched.map((file) => {
+      const match = file.name.match(/(?:¥|￥|金额|含税)[\s_-]*([0-9]+(?:\.[0-9]{1,2})?)/i) || file.name.match(/[_-]([0-9]+(?:\.[0-9]{1,2})?)(?:元|rmb)?(?:[_-]|\.)/i);
+      return match ? Number(match[1]) : 0;
+    });
+    const amount = amounts.some(Boolean) ? amounts.reduce((total, value) => total + value, 0).toFixed(2) : '';
+    const inferredDays = group.days ? Math.max(0, ...matched.map((file) => Number((file.name.match(/([1-9][0-9]?)\s*天/) || [])[1] || 0)) ) : 0;
+    const existing = state.summaryRows.find((row) => row.type === group.type) || {};
+    return {
+      type: group.type,
+      amount: existing.amount || amount,
+      days: existing.days || (inferredDays ? String(inferredDays) : ''),
+      note: existing.note || (matched.length ? `已识别 ${matched.length} 份凭证` : ''),
+    };
+  }).filter((row) => row.note || row.amount || row.days);
+}
+
+function refreshSummaryRows() {
+  const inferred = inferSummaryRows();
+  if (inferred.length) state.summaryRows = inferred;
+  schedulePersist();
+}
+
 function openSummary() {
+  refreshSummaryRows();
   const rows = state.summaryRows.map((row, index) => `<tr data-row="${index}"><td><input data-summary="type" value="${escapeHtml(row.type)}" aria-label="费用类型" /></td><td><input data-summary="amount" inputmode="decimal" placeholder="元" value="${escapeHtml(row.amount)}" aria-label="金额" /></td><td><input data-summary="days" placeholder="天" value="${escapeHtml(row.days)}" aria-label="天数" /></td><td><input data-summary="note" placeholder="备注" value="${escapeHtml(row.note)}" aria-label="备注" /></td><td><button class="sum-remove" data-remove-row type="button" aria-label="删除此行">×</button></td></tr>`).join('');
   openModal(`<div class="modal-header"><div><h2>编辑汇总信息</h2><p>自动提取的信息仅供参考，请核对金额与天数后再生成。</p></div><button class="modal-close" data-close type="button" aria-label="关闭">×</button></div>
     <div class="modal-body"><div class="notice-box">汇总信息用于生成前审核；确认后将按当前排版生成最终 PDF。OA 上传版不生成汇总信息页。</div><table class="summary-table"><thead><tr><th>费用类型</th><th>金额</th><th>天数</th><th>备注</th><th></th></tr></thead><tbody id="summaryRows">${rows}</tbody></table><button class="sum-add" id="addSummaryRow" type="button">+ 添加一行</button></div>

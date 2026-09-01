@@ -1,0 +1,7 @@
+services:
+  expense-proof-layout:
+    build: .
+    container_name: expense-proof-layout
+    ports:
+      - "0.0.0.0:3200:4173"
+    restart: unless-stopped
