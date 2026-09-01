@@ -19,7 +19,9 @@ from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
-PAGE_DPI = 150
+# Render above screen-preview resolution so the final, image-based PDF stays
+# readable when printed. A4 at 220 DPI is still bounded enough for local use.
+PAGE_DPI = 220
 POINTS_PER_MM = 72 / 25.4
 
 
@@ -219,6 +221,20 @@ def layout_slots(layout: str, page_width: int, page_height: int) -> list[tuple[i
     return [(margin, margin, page_width - margin * 2, page_height - margin * 2)]
 
 
+def rotate_clockwise(width: int, height: int, pixels: bytes) -> tuple[int, int, bytes]:
+    """Rotate an RGB image 90 degrees clockwise without adding dependencies."""
+    rotated_width, rotated_height = height, width
+    rotated = bytearray(rotated_width * rotated_height * 3)
+    for source_y in range(height):
+        for source_x in range(width):
+            source_start = (source_y * width + source_x) * 3
+            target_x = height - source_y - 1
+            target_y = source_x
+            target_start = (target_y * rotated_width + target_x) * 3
+            rotated[target_start : target_start + 3] = pixels[source_start : source_start + 3]
+    return rotated_width, rotated_height, bytes(rotated)
+
+
 def resize_nearest(width: int, height: int, pixels: bytes, target_width: int, target_height: int) -> bytes:
     if width == target_width and height == target_height:
         return pixels
@@ -235,6 +251,23 @@ def resize_nearest(width: int, height: int, pixels: bytes, target_width: int, ta
     return bytes(output)
 
 
+def orient_page_for_slot(
+    source: tuple[int, int, bytes], slot_width: int, slot_height: int, layout: str
+) -> tuple[int, int, bytes]:
+    """Rotate portrait pages in A4 two-up when that gives them more print area."""
+    if layout != "A4":
+        return source
+    source_width, source_height, source_pixels = source
+    if source_height <= source_width:
+        return source
+
+    original_scale = min(slot_width / source_width, slot_height / source_height)
+    rotated_scale = min(slot_width / source_height, slot_height / source_width)
+    if rotated_scale <= original_scale:
+        return source
+    return rotate_clockwise(source_width, source_height, source_pixels)
+
+
 def compose_layout_pages(
     source_pages: list[tuple[int, int, bytes]], layout: str
 ) -> tuple[list[tuple[float, float, int, int, bytes]], int]:
@@ -246,8 +279,10 @@ def compose_layout_pages(
     for start in range(0, len(source_pages), len(slots)):
         canvas = bytearray([255]) * (page_width * page_height * 3)
         for source, slot in zip(source_pages[start : start + len(slots)], slots):
-            source_width, source_height, source_pixels = source
             slot_x, slot_y, slot_width, slot_height = slot
+            source_width, source_height, source_pixels = orient_page_for_slot(
+                source, slot_width, slot_height, layout
+            )
             scale = min(slot_width / source_width, slot_height / source_height)
             target_width = max(1, round(source_width * scale))
             target_height = max(1, round(source_height * scale))

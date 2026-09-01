@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "python3 server.py",
     "start": "python3 server.py",
+    "test": "python3 -m unittest discover -s tests -p 'test_*.py'",
     "check": "node --check app.js && python3 -c \"import ast; ast.parse(open('server.py', encoding='utf-8').read())\""
   }
 }

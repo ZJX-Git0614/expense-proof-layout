@@ -140,7 +140,7 @@ async function restoreWorkspace() {
 
 const layoutMeta = {
   A5: { label: 'A5 顺序', short: 'A5', hint: '适合装订归档', description: '每张凭证独立落在一张 A5 页面', className: 'a5-stack' },
-  A4: { label: 'A4 排版', short: 'A4', hint: '适合打印归档', description: '每张 A4 页面排列 2 张凭证', className: 'a4-stack' },
+  A4: { label: 'A4 排版', short: 'A4', hint: '适合打印归档', description: '每张 A4 页面排列 2 张凭证，长单据自动横向放置', className: 'a4-stack' },
   OA: { label: 'OA 上传版', short: 'OA', hint: '适合系统逐页上传', description: 'OA 模式按单页纵向整理', className: 'oa-stack' },
 };
 
@@ -472,7 +472,7 @@ function openHelp() {
     upload: { title: '上传文件', body: `<div class="help-step"><b>1</b><div><strong>选择或拖拽凭证</strong><p>支持 PDF、JPG、PNG，可以一次选择多份文件。文件会按照添加顺序出现在预览区。</p></div></div><div class="help-step"><b>2</b><div><strong>等待识别完成</strong><p>打开 OCR 后，图片会自动出现费用类型标签。识别结果仅供参考，请以原始票据为准。</p></div></div>` },
     type: { title: '设置文件类型', body: `<p>图片 OCR 会尝试标记“差旅交通、住宿发票、餐饮招待、日常采购”等类型。预览和 PDF 生成只会请求本机的 server.py，不会上传到互联网。</p><ul><li>打开开关：新添加的图片进入“识别中”状态。</li><li>关闭开关：文件仅保留格式标签，适合不需要自动识别的材料。</li></ul>` },
     card: { title: '卡片操作', body: `<p>在左侧文件列表中可以全选、删除或使用箭头微调顺序；在右侧预览卡片上可以拖拽排序，也可以为单个页面选择 A5/A4 比例裁剪。</p><p>手机或触控设备上推荐使用卡片右下方的裁剪入口与左侧的上移/下移按钮。</p>` },
-    merge: { title: '合并与排版', body: `<p>先选择一种排版模式，再点击右上角“合并 PDF”。A4 适合打印归档，A5 适合小册装订，OA 上传版会按单页纵向整理。</p><div class="notice-box">开启“汇总信息页”时，合并前会先打开汇总审核窗口；确认后会生成最终 PDF。</div>` },
+    merge: { title: '合并与排版', body: `<p>先选择一种排版模式，再点击右上角“合并 PDF”。A4 适合打印归档，A4 两合一会自动横向放置竖向长单据；A5 适合小册装订，OA 上传版会按单页纵向整理。</p><div class="notice-box">开启“汇总信息页”时，合并前会先打开汇总审核窗口；确认后会生成最终 PDF。</div>` },
     faq: { title: '常见问题', body: `<ul><li><strong>文件会上传到哪里？</strong><br />不会上传到互联网；预览和最终 PDF 生成都由本机 server.py 处理。</li><li><strong>为什么编辑区只显示一张预览？</strong><br />编辑区显示源文件首页缩略图；合并导出会处理每个源 PDF 的全部页面。</li><li><strong>下载是什么格式？</strong><br />下载按钮生成按当前排版完成的 PDF，打印按钮打开同一份最终 PDF 预览。</li></ul>` },
   };
   const setHelp = (key) => {

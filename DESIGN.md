@@ -64,7 +64,7 @@
 - Error: 不支持的文件类型、无文件导出用 toast 解释原因
 - Success: 合并完成后进入结果预览，下载/打印动作给出 toast
 - Disabled: 合并、批量删除和结果操作在没有文件或正在处理时禁用
-- Offline/slow network, if applicable: 文件不上传到互联网；本地 `server.py` 用 `pdftoppm` 转换 PDF 首页，转换失败时回退浏览器内嵌预览
+- Offline/slow network, if applicable: 文件不上传到互联网；本地 `server.py` 用 `pdftoppm` 转换 PDF 首页，合并时以 220 DPI 光栅化，并在 A4 两合一中自动横向放置竖向长单据；转换失败时回退浏览器内嵌预览
 
 ## Content voice
 - Tone: 简短、具体、友好，接近办公软件
